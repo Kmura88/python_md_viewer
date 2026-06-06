@@ -364,7 +364,7 @@ class App(ctk.CTk):
 		self.fonts = (FONT, 15)
 		self.minsize(width=350,height=200)#画面の最小サイズの設定
 		self.geometry("800x600")
-		self.title("KyoproGUI")#ウィンドウタイトル
+		self.title("python_md_viewer")#ウィンドウタイトル
 		self.grid_columnconfigure(1, weight=1) #列の重み
 		self.grid_rowconfigure(0, weight=1) #行の重み
 		ctk.set_appearance_mode("light")  # Modes: system (default), light, dark
