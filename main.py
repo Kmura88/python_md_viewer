@@ -1,16 +1,18 @@
 import os # 標準
 import re # 標準
+import argparse # 標準
 import customtkinter as ctk # pip install customtkinter
 import pyperclip # pip install pyperclip
 import webbrowser # 標準
 import markdown # pip install markdown
+import sys
 from functools import partial # 標準
 from collections import deque # 標準
 from tkinter import Canvas, messagebox # 標準
 from PIL import Image # pip install pillow
 from tkhtmlview import HTMLLabel # pip install tkhtmlview
 
-PATH="./data" # 検索ディレクトリ
+PATH="./data" # 検索ディレクトリ(初期値。コマンドライン引数 -d/--dir で上書き可能)
 FONT = "meiryo UI"# 左側のフォント(初期値:"meiryo UI")
 FONTSIZE=16 # フォントサイズ
 MDFONT="Noto Sans CJK JP" # MDファイルのフォント(初期値:"Noto Sans CJK JP")
@@ -380,8 +382,22 @@ class App(ctk.CTk):
 		self.Rightside_frame.grid(row=0, column=1, padx=(0,10), pady=(1, 0), sticky="news")
 		self.Leftside_frame.grid(row=0, column=0, padx=(0,10), sticky="nws")
 
+def parse_args():
+	parser = argparse.ArgumentParser(description="python_md_viewer: Markdownファイルビューア")
+	parser.add_argument(
+		"-d", "--dir",
+		dest="dir",
+		default=PATH,
+		help=f"検索ディレクトリのパス(初期値: {PATH})"
+	)
+	return parser.parse_args()
+
 if __name__ == "__main__":
+	args = parse_args()
+	if not os.path.isdir(args.dir):
+		messagebox.showinfo('error', f"指定されたディレクトリが存在しません: {args.dir}")
+		sys.exit(1)
+	PATH = args.dir # 検索ディレクトリをコマンドライン引数の値で上書き
 	# アプリケーション実行
 	app = App()
 	app.mainloop()
-
