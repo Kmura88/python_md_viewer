@@ -18,6 +18,7 @@ FONTSIZE=16 # フォントサイズ
 MDFONT="Noto Sans CJK JP" # MDファイルのフォント(初期値:"Noto Sans CJK JP")
 MDFONTSIZE=16 # MDファイルのフォントサイズ(おススメ:16)
 MDCODEFONT="Courier New" # MDファイルのコード用フォント(初期値:"Courier New")
+MDINLINECODEFONT="Consolas" # MDファイルのインラインコード(`code`)用フォント(初期値:"Consolas")
 EXCEPTION_FILE_NAME=["pic"] # 検索から除外するフォルダ名
 
 class Md_viewer(ctk.CTkScrollableFrame):
@@ -68,16 +69,13 @@ class Md_viewer(ctk.CTkScrollableFrame):
 				line = line.replace("#", "")# lineから#を削除
 				line = line.strip()# lineの前後の空白を削除
 				# labelを作成
-				label = ctk.CTkLabel(self, text=line, font=(MDFONT, MDFONTSIZE + (6 - count) *3), 
-						 justify="left",wraplength=self.framewidth, fg_color="transparent")
-				return label
+				return self.make_text_label(line, (MDFONT, MDFONTSIZE + (6 - count) *3))
 			
 			# lineの文頭が{space}* + { * or - or + } + {space} -> 箇条書きリスト
 			case "^\s*[\*\-\+]\s":
 				line = re.sub("^[\*\-\+]", "・",line)#文頭の*,-,+を・に置換
 				line = re.sub("(?<=\s)[\*\-\+]", "・",line)#空白の後の*,-,+を・に置換
-				label = ctk.CTkLabel(self, text=line, font=(MDFONT, MDFONTSIZE), wraplength=self.framewidth, justify="left",fg_color="transparent")
-				return label
+				return self.make_text_label(line, (MDFONT, MDFONTSIZE))
 			
 			# lineの文頭が{space}* + {num} + "." + {space} -> 番号付きリスト
 			case "^\s*\d+\.":
@@ -102,8 +100,7 @@ class Md_viewer(ctk.CTkScrollableFrame):
 				line = re.sub("^\d+\.", f"{num}.", line)# 文頭の数字を行番号に置換
 				line = re.sub("(?<=\s)\d+\.", f"{num}.",line)# 空白の後の数字を行番号に置換
 				# self.enum_num+=1
-				label = ctk.CTkLabel(self, text=line, font=(MDFONT, MDFONTSIZE), wraplength=self.framewidth, justify="left",fg_color="transparent")
-				return label
+				return self.make_text_label(line, (MDFONT, MDFONTSIZE))
 			
 			# lineの文頭が"---" or "***" or "___" -> 水平線を作成
 			case "---"|"\*\*\*"|"___":
@@ -148,10 +145,14 @@ class Md_viewer(ctk.CTkScrollableFrame):
 			
 			# そのほかの場合は単純なlabelを作成
 			case _:
-				label = ctk.CTkLabel(self, text=line, font=(MDFONT, MDFONTSIZE),
-						 wraplength=self.framewidth, justify="left", fg_color="transparent")
-				return label
-			
+				return self.make_text_label(line, (MDFONT, MDFONTSIZE))
+
+	def make_text_label(self, line, font):
+		#テキスト行の表示。インラインコード(`code`)を含む行はフォントを混在させるためInlineCodeLabelで表示する
+		if re.search(r'`[^`]+`', line):
+			return InlineCodeLabel(self, line, font, self.framewidth)
+		return ctk.CTkLabel(self, text=line, font=font, wraplength=self.framewidth, justify="left", fg_color="transparent")
+
 	def code_analysis(self,line):
 		#framewidth=self.master.winfo_width()
 		# 構造化パターンマッチングを使って、textを解析
@@ -183,6 +184,57 @@ def resolve_path(path, base_dir):
 	if not os.path.isabs(path):
 		path = os.path.join(base_dir, path)
 	return os.path.normpath(path)
+
+class InlineCodeLabel(ctk.CTkTextbox):
+	#インラインコード(`code`)を含む行の表示用。CTkLabelは1つのラベル内でフォントを混在できないためTextboxで代用する
+	CODE_FG=("#c7254e", "#ff7b72")#インラインコードの文字色(light, dark)
+	CODE_BG=("gray78", "gray30")#インラインコードの背景色(light, dark)
+	def __init__(self, master, line, font, width):
+		super().__init__(master, font=font, width=width, height=1, fg_color="transparent", corner_radius=0,
+				   border_width=0, border_spacing=0, wrap="word", activate_scrollbars=False)
+		self.content_height=0#tkが計算した内容の高さ
+		self.fit_height=0#実際に設定した高さ(はみ出し補正込み)
+		#CTkTextboxのtag_configはfont指定を禁止しているので内部のtkinter.Textに直接設定する
+		self._textbox.tag_config("code", font=self._apply_font_scaling((MDINLINECODEFONT, font[1] - 2)))
+		self.update_code_color()
+		#re.splitでは奇数番目がバッククォートの中身になる
+		for i, part in enumerate(re.split(r'`([^`]+)`', line)):
+			if i % 2 == 1:
+				self.insert("end", f"\u2009{part}\u2009", "code")#前後に細い空白を入れて囲みに余白を作る
+			else:
+				self.insert("end", part)
+		self.configure(state="disabled")#読み取り専用(選択・コピーは可能)
+		self._textbox.bind("<Configure>", self.fit_to_content, add="+")
+
+	def fit_to_content(self, event=None):
+		#折り返し後の内容の高さにTextboxの高さを合わせる
+		height = self._textbox.count("1.0", "end", "update", "ypixels")#"end"は末尾の改行の次の行頭なので全行の高さになる
+		if isinstance(height, tuple):
+			height = height[0]
+		if height and height != self.content_height:#高さ補正によるConfigureでは再計算しない(無限ループ防止)
+			self.content_height = height
+			self.fit_height = height
+			self.configure(height=self._reverse_widget_scaling(height))
+			self.after_idle(self.expand_if_overflow, 20)
+
+	def expand_if_overflow(self, retry):
+		#フォントの代替(未インストール時)などで計算値より実際の表示が高くなり末尾が欠ける場合があるので、はみ出していたら少しずつ広げる
+		if not self.winfo_exists():
+			return
+		self._textbox.yview_moveto(0)
+		if self._textbox.yview()[1] < 1.0 and retry > 0:
+			self.fit_height += 2
+			self.configure(height=self._reverse_widget_scaling(self.fit_height))
+			self.after_idle(self.expand_if_overflow, retry - 1)
+
+	def update_code_color(self):
+		self._textbox.tag_config("code", foreground=self._apply_appearance_mode(self.CODE_FG),
+						   background=self._apply_appearance_mode(self.CODE_BG))
+
+	def _set_appearance_mode(self, mode_string):
+		#night modeの切り替え時にタグの色も追従させる
+		super()._set_appearance_mode(mode_string)
+		self.update_code_color()
 
 class StrRe(str):
 	def __init__(self, var):
