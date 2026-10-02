@@ -27,14 +27,24 @@ class Md_viewer(ctk.CTkScrollableFrame):
 		self.enum_num=[]#{"space":spaceの量,"num":番号}
 		self.code_buffer=[]
 		self.line_is_code=False
+	def clear(self):
+		#盤面の初期化。CTkScrollableFrameはdestroyすると外枠やイベントが残り重くなるため、作り直さずに中身だけ消して使い回す
+		for widget in self.winfo_children():
+			widget.destroy()
+		self.Object.clear()
+		self.enum_num.clear()
+		self.code_buffer.clear()
+		self.line_is_code=False
+		self._parent_canvas.yview_moveto(0)#スクロール位置を先頭に戻す
 	def make_md_view(self, path):
 		#新しい盤面の生成
+		self.clear()
 		try:
 			with open(path, 'r', encoding='utf-8') as f:
 				text = f.read()#markdownファイルの読み込み
 		except OSError as e:
 			messagebox.showinfo('error', f"データの読み込みに失敗しました: {e}")
-			text = None
+			return
 		text = text.split('\n')# textを改行で分割
 		# textを1行ずつ解析
 		for line in text:
@@ -176,12 +186,14 @@ class Md_viewer_html(ctk.CTkFrame):
 
 	def make_md_view(self, path):
 		#新しい盤面の生成
+		for widget in self.winfo_children():#前回の表示を破棄
+			widget.destroy()
 		try:
 			with open(path, 'r', encoding='utf-8') as f:
 				text = f.read()#markdownファイルの読み込み
 		except OSError as e:
 			messagebox.showinfo('error', f"データの読み込みに失敗しました: {e}")
-			text = None
+			return
 		md=markdown.Markdown(extensions=['tables'])
 		text=md.convert(text)
 		html_label = HTMLLabel(self, html=text)
@@ -199,6 +211,14 @@ class File_viewer(ctk.CTkScrollableFrame):
 		self.grid_columnconfigure(0, weight=1) #列の重み
 		self.print_files(self.path)
 		self.configure(fg_color="transparent")
+
+	def reload(self, path):
+		#表示するフォルダの切り替え。作り直さずに中身だけ消して使い回す(Md_viewer.clearと同じ理由)
+		for widget in self.winfo_children():
+			widget.destroy()
+		self.path=path
+		self.print_files(self.path)
+		self._parent_canvas.yview_moveto(0)#スクロール位置を先頭に戻す
 
 	def print_files(self, path):
 		if path==None:
@@ -310,11 +330,7 @@ class Left_frame(ctk.CTkFrame):
 	
 	def Remake_File_viewer(self,path):
 		self.path_deque.append(path)
-		self.file_viewer_frame.destroy()
-		self.file_viewer_frame = File_viewer(self, path=path)
-		self.file_viewer_frame.set_name_label(self.name_label)#setter
-		self.file_viewer_frame.set_Right_frame(self.Right_frame)#setter
-		self.file_viewer_frame.grid(row=1, column=0, sticky="news")
+		self.file_viewer_frame.reload(path)
 		self.set_visible_Backbutton()
 
 	def back_button_callback(self):
@@ -332,7 +348,10 @@ class Right_frame(ctk.CTkFrame):
 		self.grid_rowconfigure(1, weight=1) #行の重み
 		self.grid_columnconfigure(0, weight=1) #列の重み
 		self.html_mode=False
-		self.md_viewer_frame = ctk.CTkFrame(self)#md表示用フレームのインスタンス化
+		#md表示用フレームは通常モード用とHTMLモード用を1つずつ生成して使い回す(destroyして作り直すと重くなるため)
+		self.md_viewer=Md_viewer(self)
+		self.md_viewer_html=Md_viewer_html(self)
+		self.md_viewer_frame = self.md_viewer#現在表示中のフレーム
 		self.file_name_label = ctk.CTkLabel(self, text="", font=('MS UI Gothic', 20,"bold"),
 									  anchor="w",fg_color="transparent")#ファイル名表示用ラベル
 		self.file_name_label.grid(row=0, column=0, sticky="e")
@@ -340,15 +359,14 @@ class Right_frame(ctk.CTkFrame):
 
 	def make_md_view(self,path):
 		prev_frame_width=self.md_viewer_frame.winfo_width()
-		self.md_viewer_frame.destroy()#既存のframeは一度破棄
-		if self.html_mode==True:
-			self.md_viewer_frame = Md_viewer_html(self)#md表示用フレームのインスタンス化
-		else:
-			self.md_viewer_frame = Md_viewer(self)#md表示用フレームのインスタンス化
+		next_frame = self.md_viewer_html if self.html_mode==True else self.md_viewer
+		if next_frame is not self.md_viewer_frame:#モードが切り替わった場合は表示するフレームを入れ替える
+			self.md_viewer_frame.grid_remove()
+			self.md_viewer_frame = next_frame
+			self.md_viewer_frame.grid(row=1, column=0, sticky="news")
 		#ctkでは描写処理中に自身のウィンドウフレームの大きさを取得すると初めのミリ秒のうちだけ大きさにかかわらず1が返ってきてしまうため
 		#事前に直前まで使用したフレームの大きさを与えておく。
 		self.md_viewer_frame.set_frame_width(width=prev_frame_width)
-		self.md_viewer_frame.grid(row=1, column=0, sticky="news")
 		self.md_viewer_frame.make_md_view(path=path)
 	
 	def get_name_label(self):
