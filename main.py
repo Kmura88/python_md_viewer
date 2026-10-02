@@ -39,6 +39,7 @@ class Md_viewer(ctk.CTkScrollableFrame):
 	def make_md_view(self, path):
 		#新しい盤面の生成
 		self.clear()
+		self.md_dir = os.path.dirname(os.path.abspath(path))#画像の相対パスの基準(mdファイルのあるフォルダ)
 		try:
 			with open(path, 'r', encoding='utf-8') as f:
 				text = f.read()#markdownファイルの読み込み
@@ -121,10 +122,9 @@ class Md_viewer(ctk.CTkScrollableFrame):
 			case r"!\[":
 				self.enum_num.clear()#番号付き箇条書きの番号をリセット
 				
-				line = re.findall(r'\((.*?)\)', line)[0].replace("^.\\", "")
-				line = os.path.join(os.path.dirname(__file__), line)			
+				img_path = resolve_path(re.findall(r'\((.*?)\)', line)[0], self.md_dir)
 				try:
-					image=Image.open(line)
+					image=Image.open(img_path)
 					image_width = self.framewidth if image.width > self.framewidth else image.width
 					image_height = (image.height * image_width) / image.width
 					ctk_image = ctk.CTkImage(light_image=image,
@@ -173,6 +173,17 @@ class Md_viewer(ctk.CTkScrollableFrame):
 		self.configure(width=width)
 		self.framewidth=width
 
+def resolve_path(path, base_dir):
+	#画像パスの解決。URLと絶対パスはそのまま、相対パスはbase_dir(mdファイルのあるフォルダ)基準で解決する
+	path = path.strip().strip("<>")
+	path = re.sub(r'\s+".*"$', '', path)#![alt](path "title") のtitle部分を除去
+	if re.match(r'^https?://', path):
+		return path
+	path = os.path.expanduser(path)
+	if not os.path.isabs(path):
+		path = os.path.join(base_dir, path)
+	return os.path.normpath(path)
+
 class StrRe(str):
 	def __init__(self, var):
 		self.var = var
@@ -196,6 +207,10 @@ class Md_viewer_html(ctk.CTkFrame):
 			return
 		md=markdown.Markdown(extensions=['tables'])
 		text=md.convert(text)
+		#imgタグのsrcをmdファイル基準で解決した絶対パスに書き換える
+		md_dir = os.path.dirname(os.path.abspath(path))
+		text = re.sub(r'(<img[^>]*?src=")([^"]*)"',
+				lambda m: f'{m.group(1)}{resolve_path(m.group(2), md_dir)}"', text)
 		html_label = HTMLLabel(self, html=text)
 		html_label.pack(fill="both",side="bottom",expand=1)
 		
