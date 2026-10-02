@@ -21,12 +21,10 @@ pip install customtkinter pyperclip markdown pillow tkhtmlview
 
 ## 使い方
 
-1. 任意のファイル名（例: `main.py`）でソースコードを保存します。
-2. アプリと同じ階層にメモ用のフォルダー（デフォルト設定では `data` フォルダー）を作成し、中にMarkdownファイル（`.md`）を配置します。
-3. 以下のコマンドを実行してGUIを起動します。
+1. 以下のコマンドを実行してGUIを起動します。
 
 ```bash
-python main.py
+python main.py -d ./data
 ```
 
 ## 設定の変更
